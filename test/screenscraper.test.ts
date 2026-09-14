@@ -8,6 +8,10 @@ import Plugin, {
   type ScreenScraperConfig,
 } from "../src/index.js";
 
+function media(type: string, region: string, url: string, format = "png") {
+  return { type, parent: "jeu", region, url, format };
+}
+
 const SEARCH_FIXTURE = {
   response: {
     jeux: [
@@ -26,20 +30,8 @@ const SEARCH_FIXTURE = {
           { langue: "en", text: "Sonic must save the animals..." },
         ],
         medias: [
-          {
-            type: "box-2D",
-            parent: "jeu",
-            region: "wor",
-            url: "https://screenscraper.fr/image.php?media=box2D(wor)",
-            format: "png",
-          },
-          {
-            type: "ss",
-            parent: "jeu",
-            region: "wor",
-            url: "https://screenscraper.fr/image.php?media=ss(wor)",
-            format: "jpg",
-          },
+          media("box-2D", "wor", "https://screenscraper.fr/image.php?media=box2D(wor)"),
+          media("ss", "wor", "https://screenscraper.fr/image.php?media=ss(wor)", "jpg"),
         ],
       },
     ],
@@ -75,48 +67,12 @@ const DETAIL_FIXTURE = {
       note: { text: "18" },
       systeme: { id: "1", nom: "Mega Drive" },
       medias: [
-        {
-          type: "box-2D",
-          parent: "jeu",
-          region: "us",
-          url: "https://screenscraper.fr/image.php?media=box2D(us)",
-          format: "png",
-        },
-        {
-          type: "box-2D",
-          parent: "jeu",
-          region: "wor",
-          url: "https://screenscraper.fr/image.php?media=box2D(wor)",
-          format: "png",
-        },
-        {
-          type: "fanart",
-          parent: "jeu",
-          region: "wor",
-          url: "https://screenscraper.fr/image.php?media=fanart(wor)",
-          format: "jpg",
-        },
-        {
-          type: "wheel",
-          parent: "jeu",
-          region: "wor",
-          url: "https://screenscraper.fr/image.php?media=wheel(wor)",
-          format: "png",
-        },
-        {
-          type: "ss",
-          parent: "jeu",
-          region: "wor",
-          url: "https://screenscraper.fr/image.php?media=ss1(wor)",
-          format: "jpg",
-        },
-        {
-          type: "sstitle",
-          parent: "jeu",
-          region: "us",
-          url: "https://screenscraper.fr/image.php?media=sstitle(us)",
-          format: "jpg",
-        },
+        media("box-2D", "us", "https://screenscraper.fr/image.php?media=box2D(us)"),
+        media("box-2D", "wor", "https://screenscraper.fr/image.php?media=box2D(wor)"),
+        media("fanart", "wor", "https://screenscraper.fr/image.php?media=fanart(wor)", "jpg"),
+        media("wheel", "wor", "https://screenscraper.fr/image.php?media=wheel(wor)"),
+        media("ss", "wor", "https://screenscraper.fr/image.php?media=ss1(wor)", "jpg"),
+        media("sstitle", "us", "https://screenscraper.fr/image.php?media=sstitle(us)", "jpg"),
       ],
     },
   },
