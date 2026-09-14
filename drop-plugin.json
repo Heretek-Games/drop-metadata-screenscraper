@@ -1,0 +1,18 @@
+{
+  "id": "drop-metadata-screenscraper",
+  "name": "ScreenScraper",
+  "version": "0.1.0",
+  "description": "ScreenScraper metadata provider plugin for Drop (#207).",
+  "author": "Heretek Games",
+  "apiVersion": 2,
+  "trust": "trusted",
+  "storageVersion": 1,
+  "capabilities": [
+    "metadata:provider",
+    "network"
+  ],
+  "targets": [
+    "server"
+  ],
+  "entry": "dist/src/index.js"
+}
