@@ -8,39 +8,90 @@ import type {
 
 export type HttpFetch = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
-const API_BASE = "https://www.screenscraper.fr/api2";
-const API_KEY_ENV = "SCREENSCRAPER_API_KEY";
+const API_BASE = "https://api.screenscraper.fr/api2";
+const SOFT_NAME_DEFAULT = "drop-metadata-screenscraper";
+const CONFIG_KEY = "config";
 
-interface RawRecord {
-  id?: string | number;
-  name?: string;
-  title?: string;
-  releaseYear?: number;
-  released?: string;
-  cover?: { url?: string };
-  coverUrl?: string;
-  bannerUrl?: string;
-  iconUrl?: string;
-  description?: string;
-  summary?: string;
+const ENV_KEYS = {
+  devId: "SCREENSCRAPER_DEVID",
+  devPassword: "SCREENSCRAPER_DEVPASSWORD",
+  softName: "SCREENSCRAPER_SOFTNAME",
+  ssId: "SCREENSCRAPER_SSID",
+  ssPassword: "SCREENSCRAPER_SSPASSWORD",
+} as const;
+
+const REGION_PRIORITY = ["wor", "us", "eu", "jp", "fr"];
+const LANGUAGE_PRIORITY = ["en", "fr"];
+
+export interface ScreenScraperConfig {
+  devId?: string;
+  devPassword?: string;
+  softName?: string;
+  ssId?: string;
+  ssPassword?: string;
 }
 
-/** Maps provider payloads (arrays under `data`, `results`, or bare) to results. */
-export function mapSearchResults(payload: unknown): MetadataSearchResult[] {
-  const container = payload as Record<string, unknown> | undefined;
-  const raw = (Array.isArray(payload)
-    ? payload
-    : (container?.data ?? container?.results ?? container?.games ?? [])) as RawRecord[];
-  return (Array.isArray(raw) ? raw : []).map((record) => ({
-    id: String(record.id ?? record.name ?? record.title ?? ""),
-    title: String(record.name ?? record.title ?? "Unknown"),
-    releaseYear: record.releaseYear ?? parseYear(record.released),
-    coverUrl: record.cover?.url ?? record.coverUrl,
-    bannerUrl: record.bannerUrl,
-    iconUrl: record.iconUrl,
-    description: record.description ?? record.summary,
-    provider: "screenscraper",
-  }));
+interface LocalizedText {
+  region?: string;
+  langue?: string;
+  text?: string;
+}
+
+export interface ScreenScraperMedia {
+  type?: string;
+  parent?: string;
+  region?: string;
+  url?: string;
+  format?: string;
+  size?: string;
+}
+
+interface ScreenScraperGenre {
+  id?: string;
+  noms?: LocalizedText[];
+}
+
+interface NamedRecord {
+  id?: string;
+  text?: string;
+}
+
+export interface ScreenScraperGame {
+  id?: string | number;
+  noms?: LocalizedText[];
+  dates?: LocalizedText[];
+  genres?: ScreenScraperGenre[];
+  developpeur?: NamedRecord;
+  editeur?: NamedRecord;
+  synopsis?: LocalizedText[];
+  joueurs?: { text?: string };
+  note?: { text?: string };
+  medias?: ScreenScraperMedia[];
+  systeme?: { id?: string; nom?: string };
+}
+
+function pickByKey(
+  entries: LocalizedText[] | undefined,
+  key: "region" | "langue",
+  priority: string[],
+): string | undefined {
+  if (!Array.isArray(entries)) return undefined;
+  for (const wanted of priority) {
+    const match = entries.find(
+      (entry) => entry?.[key] === wanted && typeof entry.text === "string" && entry.text.length > 0,
+    );
+    if (match) return match.text;
+  }
+  return entries.find((entry) => typeof entry?.text === "string" && entry.text.length > 0)?.text;
+}
+
+function pickMediaUrl(medias: ScreenScraperMedia[], types: string[]): string | undefined {
+  const matches = medias.filter((media) => media?.type && types.includes(media.type) && media.url);
+  for (const region of REGION_PRIORITY) {
+    const match = matches.find((media) => media.region === region);
+    if (match?.url) return match.url;
+  }
+  return matches.find((media) => media.url)?.url;
 }
 
 function parseYear(value: string | undefined): number | undefined {
@@ -49,35 +100,119 @@ function parseYear(value: string | undefined): number | undefined {
   return match ? Number.parseInt(match[0], 10) : undefined;
 }
 
+function extractGames(payload: unknown): ScreenScraperGame[] {
+  const response = (payload as { response?: { jeux?: unknown; jeu?: unknown } } | undefined)?.response;
+  const games = response?.jeux ?? response?.jeu;
+  if (Array.isArray(games)) return games as ScreenScraperGame[];
+  if (games && typeof games === "object") return [games as ScreenScraperGame];
+  return [];
+}
+
+export function mapSearchResults(payload: unknown): MetadataSearchResult[] {
+  return extractGames(payload)
+    .filter((game) => game?.id !== undefined)
+    .map((game) => {
+      const medias = Array.isArray(game.medias) ? game.medias : [];
+      return {
+        id: String(game.id),
+        title: pickByKey(game.noms, "region", REGION_PRIORITY) ?? "Unknown",
+        releaseYear: parseYear(pickByKey(game.dates, "region", REGION_PRIORITY)),
+        coverUrl: pickMediaUrl(medias, ["box-2D"]),
+        description: pickByKey(game.synopsis, "langue", LANGUAGE_PRIORITY),
+        provider: "screenscraper",
+      };
+    });
+}
+
+export function mapGameDetails(payload: unknown): MetadataDetails | null {
+  const game = extractGames(payload)[0];
+  if (!game?.id) return null;
+
+  const medias = Array.isArray(game.medias) ? game.medias : [];
+  const screenshots = medias
+    .filter((media) => media.type === "ss" || media.type === "sstitle")
+    .map((media) => media.url)
+    .filter((url): url is string => Boolean(url));
+
+  const genres = (Array.isArray(game.genres) ? game.genres : [])
+    .map((genre) => pickByKey(genre?.noms, "langue", LANGUAGE_PRIORITY))
+    .filter((name): name is string => Boolean(name));
+
+  return {
+    id: String(game.id),
+    title: pickByKey(game.noms, "region", REGION_PRIORITY) ?? "Unknown",
+    releaseYear: parseYear(pickByKey(game.dates, "region", REGION_PRIORITY)),
+    coverUrl: pickMediaUrl(medias, ["box-2D"]),
+    bannerUrl: pickMediaUrl(medias, ["fanart"]),
+    iconUrl: pickMediaUrl(medias, ["wheel", "wheel-hd"]),
+    description: pickByKey(game.synopsis, "langue", LANGUAGE_PRIORITY),
+    genres,
+    developers: game.developpeur?.text ? [game.developpeur.text] : undefined,
+    publishers: game.editeur?.text ? [game.editeur.text] : undefined,
+    screenshots: Array.from(new Set(screenshots)),
+    provider: "screenscraper",
+    metadata: {
+      system: game.systeme?.nom,
+      players: game.joueurs?.text,
+      rating: game.note?.text,
+    },
+  };
+}
+
+export function resolveConfig(
+  config: ScreenScraperConfig | null | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): ScreenScraperConfig {
+  return {
+    devId: config?.devId?.trim() || env[ENV_KEYS.devId]?.trim() || undefined,
+    devPassword: config?.devPassword?.trim() || env[ENV_KEYS.devPassword]?.trim() || undefined,
+    softName:
+      config?.softName?.trim() || env[ENV_KEYS.softName]?.trim() || SOFT_NAME_DEFAULT,
+    ssId: config?.ssId?.trim() || env[ENV_KEYS.ssId]?.trim() || undefined,
+    ssPassword: config?.ssPassword?.trim() || env[ENV_KEYS.ssPassword]?.trim() || undefined,
+  };
+}
+
 export class ScreenScraperProvider implements MetadataProvider {
   id = "screenscraper";
   name = "ScreenScraper";
 
   constructor(
-    private readonly apiKey: string | undefined,
+    private readonly config: ScreenScraperConfig,
     private readonly fetchFn: HttpFetch,
   ) {}
 
   async search(query: string): Promise<MetadataSearchResult[]> {
-    const url = new URL(`${API_BASE}/jeuInfos.php`);
-    url.searchParams.set("romnom", query);
+    const url = this.buildUrl("jeuRecherche.php");
+    url.searchParams.set("recherche", query);
     const payload = await this.request(url);
     return mapSearchResults(payload);
   }
 
   async getDetails(id: string): Promise<MetadataDetails | null> {
-    const url = new URL(`${API_BASE}/jeuInfos.php?gameid=${id}`.replace("${id}", id));
+    const url = this.buildUrl("jeuInfos.php");
+    url.searchParams.set("gameid", id);
     const payload = await this.request(url);
-    const results = mapSearchResults(payload);
-    return results[0] ? { ...results[0], screenshots: [] } : null;
+    return mapGameDetails(payload);
+  }
+
+  private buildUrl(endpoint: string): URL {
+    const url = new URL(`${API_BASE}/${endpoint}`);
+    url.searchParams.set("output", "json");
+    url.searchParams.set("softname", this.config.softName ?? SOFT_NAME_DEFAULT);
+    if (this.config.devId) url.searchParams.set("devid", this.config.devId);
+    if (this.config.devPassword) url.searchParams.set("devpassword", this.config.devPassword);
+    if (this.config.ssId) url.searchParams.set("ssid", this.config.ssId);
+    if (this.config.ssPassword) url.searchParams.set("sspassword", this.config.ssPassword);
+    return url;
   }
 
   private async request(url: URL): Promise<unknown> {
-    const headers: Record<string, string> = { Accept: "application/json" };
-    if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
-    const response = await this.fetchFn(url.toString(), { headers });
+    const response = await this.fetchFn(url.toString(), {
+      headers: { Accept: "application/json" },
+    });
     if (!response.ok) {
-      throw new Error(`ScreenScraper request failed: ${response.status}`);
+      throw new Error(`ScreenScraper request failed with status ${response.status}`);
     }
     return response.json();
   }
@@ -93,12 +228,14 @@ export default class ScreenScraperPlugin implements ServerPlugin {
   };
 
   async init(ctx: PluginContext): Promise<void> {
-    const apiKey = process.env[API_KEY_ENV];
-    ctx.registerMetadataProvider(
-      new ScreenScraperProvider(apiKey, ctx.fetch.bind(ctx)),
-    );
+    const stored = await ctx.storage.get<ScreenScraperConfig>(CONFIG_KEY);
+    const config = resolveConfig(stored);
+    ctx.registerMetadataProvider(new ScreenScraperProvider(config, ctx.fetch.bind(ctx)));
+    const configured = Boolean(config.devId && config.devPassword);
     ctx.logger.info(
-      `ScreenScraper metadata provider registered${apiKey ? "" : " (no API key configured)"}`,
+      `ScreenScraper metadata provider registered (developer credentials ${
+        configured ? "configured" : "not configured"
+      })`,
     );
   }
 }
