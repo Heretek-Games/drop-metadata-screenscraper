@@ -224,7 +224,7 @@ export default class ScreenScraperPlugin implements ServerPlugin {
     name: "ScreenScraper",
     version: "0.1.0",
     apiVersion: 2,
-    capabilities: ["metadata:provider" as const, "network" as const],
+    capabilities: ["metadata:provider" as const, "network" as const, "storage" as const],
   };
 
   async init(ctx: PluginContext): Promise<void> {

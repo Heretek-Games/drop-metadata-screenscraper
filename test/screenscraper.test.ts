@@ -106,7 +106,7 @@ async function createProviderContext(
   fixtures: Array<{ match: string; body: unknown; status?: number }>,
   config?: ScreenScraperConfig,
 ): Promise<{ ctx: MockPluginContext; calls: FetchCall[]; messages: string[] }> {
-  const ctx = new MockPluginContext("drop-metadata-screenscraper", ["metadata:provider", "network"]);
+  const ctx = new MockPluginContext("drop-metadata-screenscraper", ["metadata:provider", "network", "storage"]);
   const messages: string[] = [];
   ctx.logger = {
     info: (message: string) => messages.push(message),
